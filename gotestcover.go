@@ -21,7 +21,7 @@ var (
 	flagRun       string
 	flagShort     bool
 	flagTimeout   string
-	flagCoverMode = "set"
+	flagCoverMode string
 	flagHTML      string
 )
 
@@ -85,7 +85,15 @@ func getPackages() ([]string, error) {
 
 func runAllPackageTests(ps []string, pf func(string)) ([]byte, error) {
 	covBuf := new(bytes.Buffer)
-	fmt.Fprintf(covBuf, "mode: %s\n", flagCoverMode)
+	coverMode := flagCoverMode
+	if coverMode == "" {
+		if flagRace {
+			coverMode = "atomic"
+		} else {
+			coverMode = "set"
+		}
+	}
+	fmt.Fprintf(covBuf, "mode: %s\n", coverMode)
 	for _, p := range ps {
 		out, cov, err := runPackageTests(p)
 		if err != nil {
