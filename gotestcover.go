@@ -8,25 +8,26 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"syscall"
+	"runtime"
+	"sync"
 )
 
 var (
-	flagVerbose   bool
-	flagA         bool
-	flagX         bool
-	flagRace      bool
-	flagCPU       string
-	flagParallel  string
-	flagRun       string
-	flagShort     bool
-	flagTimeout   string
-	flagCoverMode string
-	flagHTML      string
+	flagVerbose          bool
+	flagA                bool
+	flagX                bool
+	flagRace             bool
+	flagCPU              string
+	flagParallel         string
+	flagRun              string
+	flagShort            bool
+	flagTimeout          string
+	flagCoverMode        string
+	flagHTML             string
+	flagParallelPackages = runtime.GOMAXPROCS(0)
 )
 
 func main() {
-	parseFlags()
 	err := run()
 	if err != nil {
 		fmt.Println(err)
@@ -34,7 +35,29 @@ func main() {
 	}
 }
 
-func parseFlags() {
+func run() error {
+	err := parseFlags()
+	if err != nil {
+		return err
+	}
+	ps, err := getPackages()
+	if err != nil {
+		return err
+	}
+	cov := runAllPackageTests(ps, func(out string) {
+		fmt.Print(out)
+	})
+	if len(cov) > 0 {
+		covRes, err := generateCoverResult(cov)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s", covRes)
+	}
+	return nil
+}
+
+func parseFlags() error {
 	flag.BoolVar(&flagVerbose, "v", flagVerbose, "see `go test` help")
 	flag.BoolVar(&flagA, "a", flagA, "see `go build` help")
 	flag.BoolVar(&flagX, "x", flagX, "see `go build` help")
@@ -46,25 +69,11 @@ func parseFlags() {
 	flag.StringVar(&flagTimeout, "timeout", flagTimeout, "see `go test` help")
 	flag.StringVar(&flagCoverMode, "covermode", flagCoverMode, "see `go test` help")
 	flag.StringVar(&flagHTML, "html", flagHTML, "generate HTML representation of coverage profile")
+	flag.IntVar(&flagParallelPackages, "parallelpackages", flagParallelPackages, "Number of package test run in parallel")
 	flag.Parse()
-}
-
-func run() error {
-	ps, err := getPackages()
-	if err != nil {
-		return err
+	if flagParallelPackages < 1 {
+		return fmt.Errorf("flag parallelpackages must be greater than or equal to 1")
 	}
-	cov, err := runAllPackageTests(ps, func(out string) {
-		fmt.Print(out)
-	})
-	if err != nil {
-		return err
-	}
-	covRes, err := generateCoverResult(cov)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("%s", covRes)
 	return nil
 }
 
@@ -83,26 +92,47 @@ func getPackages() ([]string, error) {
 	return ps, nil
 }
 
-func runAllPackageTests(ps []string, pf func(string)) ([]byte, error) {
-	covBuf := new(bytes.Buffer)
-	coverMode := flagCoverMode
-	if coverMode == "" {
-		if flagRace {
-			coverMode = "atomic"
+func runAllPackageTests(ps []string, pf func(string)) []byte {
+	pch := make(chan string)
+	type res struct {
+		out string
+		cov []byte
+		err error
+	}
+	resch := make(chan res)
+	wg := new(sync.WaitGroup)
+	wg.Add(flagParallelPackages)
+	go func() {
+		for _, p := range ps {
+			pch <- p
+		}
+		close(pch)
+		wg.Wait()
+		close(resch)
+	}()
+	for i := 0; i < flagParallelPackages; i++ {
+		go func() {
+			for p := range pch {
+				out, cov, err := runPackageTests(p)
+				resch <- res{
+					out: out,
+					cov: cov,
+					err: err,
+				}
+			}
+			wg.Done()
+		}()
+	}
+	var cov []byte
+	for r := range resch {
+		if r.err == nil {
+			pf(r.out)
+			cov = append(cov, r.cov...)
 		} else {
-			coverMode = "set"
+			pf(r.err.Error())
 		}
 	}
-	fmt.Fprintf(covBuf, "mode: %s\n", coverMode)
-	for _, p := range ps {
-		out, cov, err := runPackageTests(p)
-		if err != nil {
-			return nil, err
-		}
-		pf(out)
-		covBuf.Write(cov)
-	}
-	return covBuf.Bytes(), nil
+	return cov
 }
 
 func runPackageTests(p string) (out string, cov []byte, err error) {
@@ -147,7 +177,7 @@ func runPackageTests(p string) (out string, cov []byte, err error) {
 	}
 	args = append(args, "-coverprofile", coverFile.Name())
 	args = append(args, p)
-	cmdOut, err := runGoCommandExpectExitError(1, args...)
+	cmdOut, err := runGoCommand(args...)
 	if err != nil {
 		return "", nil, err
 	}
@@ -160,13 +190,24 @@ func runPackageTests(p string) (out string, cov []byte, err error) {
 }
 
 func generateCoverResult(cov []byte) ([]byte, error) {
+	covBuf := new(bytes.Buffer)
+	coverMode := flagCoverMode
+	if coverMode == "" {
+		if flagRace {
+			coverMode = "atomic"
+		} else {
+			coverMode = "set"
+		}
+	}
+	fmt.Fprintf(covBuf, "mode: %s\n", coverMode)
+	covBuf.Write(cov)
 	coverFile, err := tempFile()
 	if err != nil {
 		return nil, err
 	}
 	defer coverFile.Close()
 	defer os.Remove(coverFile.Name())
-	err = ioutil.WriteFile(coverFile.Name(), cov, 0)
+	err = ioutil.WriteFile(coverFile.Name(), covBuf.Bytes(), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -184,23 +225,12 @@ func generateCoverResult(cov []byte) ([]byte, error) {
 }
 
 func runGoCommand(args ...string) ([]byte, error) {
-	return runGoCommandExpectExitError(0, args...)
-}
-
-func runGoCommandExpectExitError(expectedStatus int, args ...string) ([]byte, error) {
 	cmd := exec.Command("go", args...)
 	out, err := cmd.CombinedOutput()
-	if err == nil {
-		return out, nil
+	if err != nil {
+		return nil, fmt.Errorf("command %s: %s\n%s", cmd.Args, err, out)
 	}
-	if err, ok := err.(*exec.ExitError); ok {
-		if status, ok := err.Sys().(syscall.WaitStatus); ok {
-			if status.ExitStatus() == expectedStatus {
-				return out, nil
-			}
-		}
-	}
-	return nil, fmt.Errorf("command %s: %s\n%s", cmd.Args, err, out)
+	return out, nil
 }
 
 func removeFirstLine(b []byte) []byte {

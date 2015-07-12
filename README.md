@@ -16,6 +16,3 @@ Run on multiple package with:
 - `package/...`
 
 Some `go test / build` flags are available.
-
-## TODO
-- Run packages in parallel
