@@ -23,7 +23,7 @@ var (
 	flagShort            bool
 	flagTimeout          string
 	flagCoverMode        string
-	flagHTML             string
+	flagCoverProfile     string
 	flagParallelPackages = runtime.GOMAXPROCS(0)
 )
 
@@ -47,12 +47,9 @@ func run() error {
 	cov := runAllPackageTests(ps, func(out string) {
 		fmt.Print(out)
 	})
-	if len(cov) > 0 {
-		covRes, err := generateCoverResult(cov)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("%s", covRes)
+	err = writeCoverProfile(cov)
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -68,9 +65,12 @@ func parseFlags() error {
 	flag.BoolVar(&flagShort, "short", flagShort, "see `go test` help")
 	flag.StringVar(&flagTimeout, "timeout", flagTimeout, "see `go test` help")
 	flag.StringVar(&flagCoverMode, "covermode", flagCoverMode, "see `go test` help")
-	flag.StringVar(&flagHTML, "html", flagHTML, "generate HTML representation of coverage profile")
+	flag.StringVar(&flagCoverProfile, "coverprofile", flagCoverProfile, "see `go test` help")
 	flag.IntVar(&flagParallelPackages, "parallelpackages", flagParallelPackages, "Number of package test run in parallel")
 	flag.Parse()
+	if flagCoverProfile == "" {
+		return fmt.Errorf("flag coverprofile must be set")
+	}
 	if flagParallelPackages < 1 {
 		return fmt.Errorf("flag parallelpackages must be greater than or equal to 1")
 	}
@@ -136,7 +136,7 @@ func runAllPackageTests(ps []string, pf func(string)) []byte {
 }
 
 func runPackageTests(p string) (out string, cov []byte, err error) {
-	coverFile, err := tempFile()
+	coverFile, err := ioutil.TempFile("", "gotestcover-")
 	if err != nil {
 		return "", nil, err
 	}
@@ -189,7 +189,7 @@ func runPackageTests(p string) (out string, cov []byte, err error) {
 	return string(cmdOut), cov, nil
 }
 
-func generateCoverResult(cov []byte) ([]byte, error) {
+func writeCoverProfile(cov []byte) error {
 	covBuf := new(bytes.Buffer)
 	coverMode := flagCoverMode
 	if coverMode == "" {
@@ -201,27 +201,7 @@ func generateCoverResult(cov []byte) ([]byte, error) {
 	}
 	fmt.Fprintf(covBuf, "mode: %s\n", coverMode)
 	covBuf.Write(cov)
-	coverFile, err := tempFile()
-	if err != nil {
-		return nil, err
-	}
-	defer coverFile.Close()
-	defer os.Remove(coverFile.Name())
-	err = ioutil.WriteFile(coverFile.Name(), covBuf.Bytes(), 0)
-	if err != nil {
-		return nil, err
-	}
-	covRes, err := runGoCommand("tool", "cover", "-func", coverFile.Name())
-	if err != nil {
-		return nil, err
-	}
-	if flagHTML != "" {
-		_, err := runGoCommand("tool", "cover", "-html", coverFile.Name(), "-o", flagHTML)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return covRes, nil
+	return ioutil.WriteFile(flagCoverProfile, covBuf.Bytes(), os.FileMode(0644))
 }
 
 func runGoCommand(args ...string) ([]byte, error) {
@@ -245,8 +225,4 @@ func removeFirstLine(b []byte) []byte {
 		fmt.Fprintf(out, "%s\n", sc.Bytes())
 	}
 	return out.Bytes()
-}
-
-func tempFile() (*os.File, error) {
-	return ioutil.TempFile("", "gotestcover-")
 }

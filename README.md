@@ -1,15 +1,16 @@
 # Go test cover wrapper
 
 ## Features
-- `go test` / `go tool cover` wrapper
-- Multiple packages support (`go test` doesn't support coverage profile with multiple packages)
-- Merged HTML output
+- Coverage profile with multiple packages (`go test` doesn't support that)
 
 ## Install
 `go get github.com/pierrre/gotestcover`
 
 ## Usage
-`gotestcover <options> <packages>`
+```sh
+gotestcover -coverprofile=cover.out mypackage
+go tool cover -html=cover.out -o=cover.html
+```
 
 Run on multiple package with:
 - `package1 package2`
