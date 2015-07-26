@@ -1,3 +1,4 @@
+// Package gotestcover provides multiple packages support for Go test cover.
 package main
 
 import (

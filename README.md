@@ -1,4 +1,4 @@
-# Go test cover wrapper
+# Go test cover with multiple packages support
 
 ## Features
 - Coverage profile with multiple packages (`go test` doesn't support that)
