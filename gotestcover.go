@@ -9,7 +9,9 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
+	"strconv"
 	"sync"
 )
 
@@ -26,6 +28,7 @@ var (
 	flagCoverMode        string
 	flagCoverProfile     string
 	flagParallelPackages = runtime.GOMAXPROCS(0)
+	flagCoverageSummary  bool
 )
 
 func main() {
@@ -45,13 +48,32 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	coverage := 0.0
+	coveredPackages := 0
+	coverageRe := regexp.MustCompile(`coverage: (\d+\.\d+)%`)
+
 	cov := runAllPackageTests(ps, func(out string) {
 		fmt.Print(out)
+
+		if flagCoverageSummary {
+			if m := coverageRe.FindStringSubmatch(out); m != nil {
+				c, _ := strconv.ParseFloat(m[1], 32)
+				coverage += c
+				coveredPackages++
+			}
+		}
 	})
+
+	if flagCoverageSummary {
+		fmt.Printf("Coverage Summary: %f%%\n", coverage/float64(coveredPackages))
+	}
+
 	err = writeCoverProfile(cov)
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -68,6 +90,7 @@ func parseFlags() error {
 	flag.StringVar(&flagCoverMode, "covermode", flagCoverMode, "see `go test` help")
 	flag.StringVar(&flagCoverProfile, "coverprofile", flagCoverProfile, "see `go test` help")
 	flag.IntVar(&flagParallelPackages, "parallelpackages", flagParallelPackages, "Number of package test run in parallel")
+	flag.BoolVar(&flagCoverageSummary, "coveragesummary", flagCoverageSummary, "Display a coverage summary at the end")
 	flag.Parse()
 	if flagCoverProfile == "" {
 		return fmt.Errorf("flag coverprofile must be set")
