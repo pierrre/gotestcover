@@ -41,16 +41,19 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	ps, err := getPackages()
+	pkgs, err := getPackages()
 	if err != nil {
 		return err
 	}
-	cov := runAllPackageTests(ps, func(out string) {
+	cov, failed := runAllPackageTests(pkgs, func(out string) {
 		fmt.Print(out)
 	})
 	err = writeCoverProfile(cov)
 	if err != nil {
 		return err
+	}
+	if failed {
+		return fmt.Errorf("test failed")
 	}
 	return nil
 }
@@ -85,16 +88,16 @@ func getPackages() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	var ps []string
+	var pkgs []string
 	sc := bufio.NewScanner(bytes.NewReader(cmdOut))
 	for sc.Scan() {
-		ps = append(ps, sc.Text())
+		pkgs = append(pkgs, sc.Text())
 	}
-	return ps, nil
+	return pkgs, nil
 }
 
-func runAllPackageTests(ps []string, pf func(string)) []byte {
-	pch := make(chan string)
+func runAllPackageTests(pkgs []string, pf func(string)) ([]byte, bool) {
+	pkgch := make(chan string)
 	type res struct {
 		out string
 		cov []byte
@@ -104,16 +107,16 @@ func runAllPackageTests(ps []string, pf func(string)) []byte {
 	wg := new(sync.WaitGroup)
 	wg.Add(flagParallelPackages)
 	go func() {
-		for _, p := range ps {
-			pch <- p
+		for _, pkg := range pkgs {
+			pkgch <- pkg
 		}
-		close(pch)
+		close(pkgch)
 		wg.Wait()
 		close(resch)
 	}()
 	for i := 0; i < flagParallelPackages; i++ {
 		go func() {
-			for p := range pch {
+			for p := range pkgch {
 				out, cov, err := runPackageTests(p)
 				resch <- res{
 					out: out,
@@ -124,6 +127,7 @@ func runAllPackageTests(ps []string, pf func(string)) []byte {
 			wg.Done()
 		}()
 	}
+	failed := false
 	var cov []byte
 	for r := range resch {
 		if r.err == nil {
@@ -131,12 +135,13 @@ func runAllPackageTests(ps []string, pf func(string)) []byte {
 			cov = append(cov, r.cov...)
 		} else {
 			pf(r.err.Error())
+			failed = true
 		}
 	}
-	return cov
+	return cov, failed
 }
 
-func runPackageTests(p string) (out string, cov []byte, err error) {
+func runPackageTests(pkg string) (out string, cov []byte, err error) {
 	coverFile, err := ioutil.TempFile("", "gotestcover-")
 	if err != nil {
 		return "", nil, err
@@ -177,7 +182,7 @@ func runPackageTests(p string) (out string, cov []byte, err error) {
 		args = append(args, "-covermode", flagCoverMode)
 	}
 	args = append(args, "-coverprofile", coverFile.Name())
-	args = append(args, p)
+	args = append(args, pkg)
 	cmdOut, err := runGoCommand(args...)
 	if err != nil {
 		return "", nil, err
@@ -191,18 +196,21 @@ func runPackageTests(p string) (out string, cov []byte, err error) {
 }
 
 func writeCoverProfile(cov []byte) error {
-	covBuf := new(bytes.Buffer)
-	coverMode := flagCoverMode
-	if coverMode == "" {
+	if len(cov) == 0 {
+		return nil
+	}
+	buf := new(bytes.Buffer)
+	mode := flagCoverMode
+	if mode == "" {
 		if flagRace {
-			coverMode = "atomic"
+			mode = "atomic"
 		} else {
-			coverMode = "set"
+			mode = "set"
 		}
 	}
-	fmt.Fprintf(covBuf, "mode: %s\n", coverMode)
-	covBuf.Write(cov)
-	return ioutil.WriteFile(flagCoverProfile, covBuf.Bytes(), os.FileMode(0644))
+	fmt.Fprintf(buf, "mode: %s\n", mode)
+	buf.Write(cov)
+	return ioutil.WriteFile(flagCoverProfile, buf.Bytes(), os.FileMode(0644))
 }
 
 func runGoCommand(args ...string) ([]byte, error) {
