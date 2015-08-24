@@ -68,11 +68,10 @@ func TestParseFlags(t *testing.T) {
 	}
 
 	if flagParallelPackages != 2 {
-		t.Errorf("flagParallelPackages is not equal to '2', got %s", flagParallelPackages)
+		t.Errorf("flagParallelPackages is not equal to '2', got %d", flagParallelPackages)
 	}
 
 	if flagCoverProfile != "cover.out" {
 		t.Errorf("flagCoverProfile is not equal to 'cover.out', got %s", flagCoverProfile)
 	}
 }
-
