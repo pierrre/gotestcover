@@ -15,7 +15,7 @@ func TestParseFlags(t *testing.T) {
 		"-parallel=2",
 		"-run=abc",
 		"-short",
-		"-timeout=15",
+		"-timeout=15s",
 		"-covermode=atomic",
 		"-parallelpackages=2",
 		"-coverprofile=cover.out",
@@ -59,8 +59,8 @@ func TestParseFlags(t *testing.T) {
 		t.Errorf("flagShort should be set to true")
 	}
 
-	if flagTimeout != "15" {
-		t.Errorf("flagTimeout is not equal to '15', got %s", flagTimeout)
+	if flagTimeout != "15s" {
+		t.Errorf("flagTimeout is not equal to '15s', got %s", flagTimeout)
 	}
 
 	if flagCoverMode != "atomic" {
