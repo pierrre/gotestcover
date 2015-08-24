@@ -1,10 +1,19 @@
 #/bin/bash
 
+setup:
+	go get -u -v github.com/golang/lint/golint
+	go get -v -t ./...
+
+check:
+	gofmt -d .
+	go tool vet .
+	golint
+
 coverage:
-	gotestcover -coverprofile=cover.out github.com/pierre/gotestcover
-	go tool cover -html=cover.out -o=cover.html
+	gotestcover -coverprofile=coverage.txt github.com/pierre/gotestcover
+	go tool cover -html=coverage.txt -o=coverage.html
 	
 clean:
-	-rm cover.html
-	-rm cover.out
+	-rm coverage.txt
+	-rm coverage.html
 	gofmt -w .
