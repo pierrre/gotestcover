@@ -19,6 +19,7 @@ var (
 	flagX                bool
 	flagRace             bool
 	flagCPU              string
+	flagP                string
 	flagParallel         string
 	flagRun              string
 	flagShort            bool
@@ -64,6 +65,7 @@ func parseFlags() error {
 	flag.BoolVar(&flagX, "x", flagX, "see `go build` help")
 	flag.BoolVar(&flagRace, "race", flagRace, "see `go build` help")
 	flag.StringVar(&flagCPU, "cpu", flagCPU, "see `go test` help")
+	flag.StringVar(&flagP, "p", flagP, "see `go build` help")
 	flag.StringVar(&flagParallel, "parallel", flagParallel, "see `go test` help")
 	flag.StringVar(&flagRun, "run", flagRun, "see `go test` help")
 	flag.BoolVar(&flagShort, "short", flagShort, "see `go test` help")
@@ -164,6 +166,9 @@ func runPackageTests(pkg string) (out string, cov []byte, err error) {
 	}
 	if flagCPU != "" {
 		args = append(args, "-cpu", flagCPU)
+	}
+	if flagP != "" {
+		args = append(args, "-p", flagP)
 	}
 	if flagParallel != "" {
 		args = append(args, "-parallel", flagParallel)
