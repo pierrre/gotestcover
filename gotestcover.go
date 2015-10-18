@@ -14,17 +14,24 @@ import (
 )
 
 var (
-	flagVerbose          bool
-	flagA                bool
-	flagX                bool
-	flagRace             bool
-	flagCPU              string
-	flagParallel         string
-	flagRun              string
-	flagShort            bool
-	flagTimeout          string
-	flagCoverMode        string
-	flagCoverProfile     string
+	// go build
+	flagA    bool
+	flagX    bool
+	flagRace bool
+	flagTags string
+
+	// go test
+	flagV            bool
+	flagCount        int
+	flagCPU          string
+	flagParallel     string
+	flagRun          string
+	flagShort        bool
+	flagTimeout      string
+	flagCoverMode    string
+	flagCoverProfile string
+
+	// custom
 	flagParallelPackages = runtime.GOMAXPROCS(0)
 )
 
@@ -59,18 +66,23 @@ func run() error {
 }
 
 func parseFlags() error {
-	flag.BoolVar(&flagVerbose, "v", flagVerbose, "see `go test` help")
-	flag.BoolVar(&flagA, "a", flagA, "see `go build` help")
-	flag.BoolVar(&flagX, "x", flagX, "see `go build` help")
-	flag.BoolVar(&flagRace, "race", flagRace, "see `go build` help")
-	flag.StringVar(&flagCPU, "cpu", flagCPU, "see `go test` help")
-	flag.StringVar(&flagParallel, "parallel", flagParallel, "see `go test` help")
-	flag.StringVar(&flagRun, "run", flagRun, "see `go test` help")
-	flag.BoolVar(&flagShort, "short", flagShort, "see `go test` help")
-	flag.StringVar(&flagTimeout, "timeout", flagTimeout, "see `go test` help")
-	flag.StringVar(&flagCoverMode, "covermode", flagCoverMode, "see `go test` help")
-	flag.StringVar(&flagCoverProfile, "coverprofile", flagCoverProfile, "see `go test` help")
+	flag.BoolVar(&flagA, "a", flagA, "see 'go build' help")
+	flag.BoolVar(&flagX, "x", flagX, "see 'go build' help")
+	flag.BoolVar(&flagRace, "race", flagRace, "see 'go build' help")
+	flag.StringVar(&flagTags, "tags", flagTags, "see 'go build' help")
+
+	flag.BoolVar(&flagV, "v", flagV, "see 'go test' help")
+	flag.IntVar(&flagCount, "count", flagCount, "see 'go test' help")
+	flag.StringVar(&flagCPU, "cpu", flagCPU, "see 'go test' help")
+	flag.StringVar(&flagParallel, "parallel", flagParallel, "see 'go test' help")
+	flag.StringVar(&flagRun, "run", flagRun, "see 'go test' help")
+	flag.BoolVar(&flagShort, "short", flagShort, "see 'go test' help")
+	flag.StringVar(&flagTimeout, "timeout", flagTimeout, "see 'go test' help")
+	flag.StringVar(&flagCoverMode, "covermode", flagCoverMode, "see 'go test' help")
+	flag.StringVar(&flagCoverProfile, "coverprofile", flagCoverProfile, "see 'go test' help")
+
 	flag.IntVar(&flagParallelPackages, "parallelpackages", flagParallelPackages, "Number of package test run in parallel")
+
 	flag.Parse()
 	if flagCoverProfile == "" {
 		return fmt.Errorf("flag coverprofile must be set")
@@ -150,9 +162,7 @@ func runPackageTests(pkg string) (out string, cov []byte, err error) {
 	defer os.Remove(coverFile.Name())
 	var args []string
 	args = append(args, "test")
-	if flagVerbose {
-		args = append(args, "-v")
-	}
+
 	if flagA {
 		args = append(args, "-a")
 	}
@@ -161,6 +171,16 @@ func runPackageTests(pkg string) (out string, cov []byte, err error) {
 	}
 	if flagRace {
 		args = append(args, "-race")
+	}
+	if flagTags != "" {
+		args = append(args, "-tags", flagTags)
+	}
+
+	if flagV {
+		args = append(args, "-v")
+	}
+	if flagCount != 0 {
+		args = append(args, "-count", fmt.Sprint(flagCount))
 	}
 	if flagCPU != "" {
 		args = append(args, "-cpu", flagCPU)
@@ -182,6 +202,7 @@ func runPackageTests(pkg string) (out string, cov []byte, err error) {
 		args = append(args, "-covermode", flagCoverMode)
 	}
 	args = append(args, "-coverprofile", coverFile.Name())
+
 	args = append(args, pkg)
 	cmdOut, err := runGoCommand(args...)
 	if err != nil {

@@ -10,6 +10,7 @@ func TestParseFlags(t *testing.T) {
 		"-v",
 		"-a",
 		"-x",
+		"-tags=foobar",
 		"-race",
 		"-cpu=4",
 		"-parallel=2",
@@ -27,8 +28,8 @@ func TestParseFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !flagVerbose {
-		t.Errorf("flagVerbose should be set to true")
+	if !flagV {
+		t.Errorf("flagV should be set to true")
 	}
 
 	if !flagA {
@@ -37,6 +38,10 @@ func TestParseFlags(t *testing.T) {
 
 	if !flagX {
 		t.Errorf("flagX should be set to true")
+	}
+
+	if flagTags != "foobar" {
+		t.Errorf("flagCPU is not equal to foobar, got %s", flagTags)
 	}
 
 	if !flagRace {
@@ -48,7 +53,7 @@ func TestParseFlags(t *testing.T) {
 	}
 
 	if flagParallel != "2" {
-		t.Errorf("flagCPU is not equal to 2, got %s", flagParallel)
+		t.Errorf("flagParallel is not equal to 2, got %s", flagParallel)
 	}
 
 	if flagRun != "abc" {
