@@ -158,8 +158,8 @@ func runPackageTests(pkg string) (out string, cov []byte, err error) {
 	if err != nil {
 		return "", nil, err
 	}
-	defer coverFile.Close()
 	defer os.Remove(coverFile.Name())
+	defer coverFile.Close()
 	var args []string
 	args = append(args, "test")
 
