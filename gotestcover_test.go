@@ -20,6 +20,7 @@ func TestParseFlags(t *testing.T) {
 		"-covermode=atomic",
 		"-parallelpackages=2",
 		"-coverprofile=cover.out",
+		"-gaego",
 	}
 
 	err := parseFlags()
@@ -78,5 +79,9 @@ func TestParseFlags(t *testing.T) {
 
 	if flagCoverProfile != "cover.out" {
 		t.Errorf("flagCoverProfile is not equal to 'cover.out', got %s", flagCoverProfile)
+	}
+
+	if !flagGoAppEngine{
+		t.Errorf("flagGoAppEngine should be set to true")
 	}
 }
