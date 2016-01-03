@@ -33,6 +33,9 @@ var (
 
 	// custom
 	flagParallelPackages = runtime.GOMAXPROCS(0)
+
+	// GAE/Go
+	flagGoogleAppEngine bool
 )
 
 func main() {
@@ -82,6 +85,8 @@ func parseFlags() error {
 	flag.StringVar(&flagCoverProfile, "coverprofile", flagCoverProfile, "see 'go test' help")
 
 	flag.IntVar(&flagParallelPackages, "parallelpackages", flagParallelPackages, "Number of package test run in parallel")
+
+	flag.BoolVar(&flagGoogleAppEngine, "gae", flagGoogleAppEngine, "Bool of Command exec in GAE/Go")
 
 	flag.Parse()
 	if flagCoverProfile == "" {
@@ -235,7 +240,11 @@ func writeCoverProfile(cov []byte) error {
 }
 
 func runGoCommand(args ...string) ([]byte, error) {
-	cmd := exec.Command("go", args...)
+	goCmd := "go"
+	if flagGoogleAppEngine {
+		goCmd = "goapp"
+	}
+	cmd := exec.Command(goCmd, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("command %s: %s\n%s", cmd.Args, err, out)
