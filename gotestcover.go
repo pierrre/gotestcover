@@ -220,9 +220,10 @@ func runPackageTests(pkg string, flgs []string) (out string, cov []byte, err err
 	}
 	args = append(args, "-coverprofile", coverFile.Name())
 
+	args = append(args, pkg)
+
 	args = append(args, flgs...)
 
-	args = append(args, pkg)
 	cmdOut, err := runGoCommand(args...)
 	if err != nil {
 		return "", nil, err
