@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"sync"
 )
 
@@ -51,11 +52,12 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	pkgs, err := getPackages()
+	pkgArgs, flagArgs := parseArgs()
+	pkgs, err := resolvePackages(pkgArgs)
 	if err != nil {
 		return err
 	}
-	cov, failed := runAllPackageTests(pkgs, func(out string) {
+	cov, failed := runAllPackageTests(pkgs, flagArgs, func(out string) {
 		fmt.Print(out)
 	})
 	err = writeCoverProfile(cov)
@@ -98,9 +100,19 @@ func parseFlags() error {
 	return nil
 }
 
-func getPackages() ([]string, error) {
+func parseArgs() (pkgArgs, flagArgs []string) {
+	args := flag.Args()
+	for i, a := range args {
+		if strings.HasPrefix(a, "-") {
+			return args[:i], args[i:]
+		}
+	}
+	return args, nil
+}
+
+func resolvePackages(pkgArgs []string) ([]string, error) {
 	cmdArgs := []string{"list"}
-	cmdArgs = append(cmdArgs, flag.Args()...)
+	cmdArgs = append(cmdArgs, pkgArgs...)
 	cmdOut, err := runGoCommand(cmdArgs...)
 	if err != nil {
 		return nil, err
@@ -113,7 +125,7 @@ func getPackages() ([]string, error) {
 	return pkgs, nil
 }
 
-func runAllPackageTests(pkgs []string, pf func(string)) ([]byte, bool) {
+func runAllPackageTests(pkgs []string, flgs []string, pf func(string)) ([]byte, bool) {
 	pkgch := make(chan string)
 	type res struct {
 		out string
@@ -134,7 +146,7 @@ func runAllPackageTests(pkgs []string, pf func(string)) ([]byte, bool) {
 	for i := 0; i < flagParallelPackages; i++ {
 		go func() {
 			for p := range pkgch {
-				out, cov, err := runPackageTests(p)
+				out, cov, err := runPackageTests(p, flgs)
 				resch <- res{
 					out: out,
 					cov: cov,
@@ -158,7 +170,7 @@ func runAllPackageTests(pkgs []string, pf func(string)) ([]byte, bool) {
 	return cov, failed
 }
 
-func runPackageTests(pkg string) (out string, cov []byte, err error) {
+func runPackageTests(pkg string, flgs []string) (out string, cov []byte, err error) {
 	coverFile, err := ioutil.TempFile("", "gotestcover-")
 	if err != nil {
 		return "", nil, err
@@ -207,6 +219,8 @@ func runPackageTests(pkg string) (out string, cov []byte, err error) {
 		args = append(args, "-covermode", flagCoverMode)
 	}
 	args = append(args, "-coverprofile", coverFile.Name())
+
+	args = append(args, flgs...)
 
 	args = append(args, pkg)
 	cmdOut, err := runGoCommand(args...)
