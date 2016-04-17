@@ -30,6 +30,7 @@ var (
 	flagShort        bool
 	flagTimeout      string
 	flagCoverMode    string
+	flagCoverPkg     string
 	flagCoverProfile string
 
 	// custom
@@ -60,6 +61,12 @@ func run() error {
 	cov, failed := runAllPackageTests(pkgs, flagArgs, func(out string) {
 		fmt.Print(out)
 	})
+	merge := exec.Command("sh", "-c", "sort -k 3 -n -r | sort -s -k 1,2 -u")
+	merge.Stdin = bytes.NewReader(cov)
+	cov, err = merge.Output()
+	if err != nil {
+		return err
+	}
 	err = writeCoverProfile(cov)
 	if err != nil {
 		return err
@@ -84,6 +91,7 @@ func parseFlags() error {
 	flag.BoolVar(&flagShort, "short", flagShort, "see 'go test' help")
 	flag.StringVar(&flagTimeout, "timeout", flagTimeout, "see 'go test' help")
 	flag.StringVar(&flagCoverMode, "covermode", flagCoverMode, "see 'go test' help")
+	flag.StringVar(&flagCoverPkg, "coverpkg", flagCoverPkg, "see 'go test' help")
 	flag.StringVar(&flagCoverProfile, "coverprofile", flagCoverProfile, "see 'go test' help")
 
 	flag.IntVar(&flagParallelPackages, "parallelpackages", flagParallelPackages, "Number of package test run in parallel")
@@ -217,6 +225,9 @@ func runPackageTests(pkg string, flgs []string) (out string, cov []byte, err err
 	args = append(args, "-cover")
 	if flagCoverMode != "" {
 		args = append(args, "-covermode", flagCoverMode)
+	}
+	if flagCoverPkg != "" {
+		args = append(args, "-coverpkg", flagCoverPkg)
 	}
 	args = append(args, "-coverprofile", coverFile.Name())
 
