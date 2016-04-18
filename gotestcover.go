@@ -325,6 +325,7 @@ func (b blocksByStart) Less(i, j int) bool {
 }
 
 func mergeCoverProfiles(cov []byte) ([]byte, error) {
+	setMode := flagCoverMode == "set" || flagCoverMode == "" && !flagRace
 	block := make(map[profileBlock]int)
 
 	s := bufio.NewScanner(bytes.NewReader(cov))
@@ -355,9 +356,13 @@ func mergeCoverProfiles(cov []byte) ([]byte, error) {
 
 	var merged = bytes.NewBuffer(make([]byte, 0, len(cov)))
 	for _, k := range keys {
+		count := block[k]
+		if setMode && count > 0 {
+			count = 1
+		}
 		_, err := fmt.Fprintf(merged, "%s:%d.%d,%d.%d %d %d\n",
 			k.FileName, k.StartLine, k.StartCol,
-			k.EndLine, k.EndCol, k.NumStmt, block[k])
+			k.EndLine, k.EndCol, k.NumStmt, count)
 		if err != nil {
 			return nil, err
 		}
