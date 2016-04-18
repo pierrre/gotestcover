@@ -9,7 +9,10 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -61,13 +64,11 @@ func run() error {
 	cov, failed := runAllPackageTests(pkgs, flagArgs, func(out string) {
 		fmt.Print(out)
 	})
-	merge := exec.Command("sh", "-c", "sort -k 3 -n -r | sort -s -k 1,2 -u")
-	merge.Stdin = bytes.NewReader(cov)
-	cov, err = merge.Output()
+	merged, err := mergeCoverProfiles(cov)
 	if err != nil {
 		return err
 	}
-	err = writeCoverProfile(cov)
+	err = writeCoverProfile(merged)
 	if err != nil {
 		return err
 	}
@@ -290,4 +291,84 @@ func removeFirstLine(b []byte) []byte {
 		fmt.Fprintf(out, "%s\n", sc.Bytes())
 	}
 	return out.Bytes()
+}
+
+// Code below is partially borrowed from $GOSRC/cmd/cover/profile.go.
+
+var lineRe = regexp.MustCompile(`^(.+):([0-9]+).([0-9]+),([0-9]+).([0-9]+) ([0-9]+) ([0-9]+)$`)
+
+// ProfileBlock represents a single block of profiling data except Count.
+type profileBlock struct {
+	FileName            string
+	StartLine, StartCol int
+	EndLine, EndCol     int
+	NumStmt             int
+}
+
+type blocksByStart []profileBlock
+
+func (b blocksByStart) Len() int      { return len(b) }
+func (b blocksByStart) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
+func (b blocksByStart) Less(i, j int) bool {
+	switch bi, bj := b[i], b[j]; true {
+	case bi.FileName < bj.FileName:
+		return true
+	case bi.FileName > bj.FileName:
+		return false
+	case bi.StartLine < bj.StartLine:
+		return true
+	case bi.StartLine > bj.StartLine:
+		return false
+	default:
+		return bi.StartCol < bj.StartCol
+	}
+}
+
+func mergeCoverProfiles(cov []byte) ([]byte, error) {
+	block := make(map[profileBlock]int)
+
+	s := bufio.NewScanner(bytes.NewReader(cov))
+	for s.Scan() {
+		line := s.Text()
+		m := lineRe.FindStringSubmatch(line)
+		if m == nil {
+			return nil, fmt.Errorf("line %q doesn't match expected format: %v", m, lineRe)
+		}
+		block[profileBlock{
+			FileName:  m[1],
+			StartLine: toInt(m[2]),
+			StartCol:  toInt(m[3]),
+			EndLine:   toInt(m[4]),
+			EndCol:    toInt(m[5]),
+			NumStmt:   toInt(m[6]),
+		}] += toInt(m[7])
+	}
+	if err := s.Err(); err != nil {
+		return nil, err
+	}
+
+	var keys = make([]profileBlock, 0, len(block))
+	for k := range block {
+		keys = append(keys, k)
+	}
+	sort.Sort(blocksByStart(keys))
+
+	var merged = bytes.NewBuffer(make([]byte, 0, len(cov)))
+	for _, k := range keys {
+		_, err := fmt.Fprintf(merged, "%s:%d.%d,%d.%d %d %d\n",
+			k.FileName, k.StartLine, k.StartCol,
+			k.EndLine, k.EndCol, k.NumStmt, block[k])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return merged.Bytes(), nil
+}
+
+func toInt(s string) int {
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		panic(err)
+	}
+	return i
 }
